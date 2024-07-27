@@ -26,7 +26,7 @@
 #include <thread>
 #include <chrono>         
 
-#include "cartesian_impedance_control/user_input_server.hpp"
+#include <cartesian_impedance_control/user_input_server.hpp>
 
 #include <rclcpp/rclcpp.hpp>
 #include "rclcpp/subscription.hpp"
@@ -46,9 +46,13 @@
 #include "franka_msgs/msg/franka_robot_state.hpp"
 #include "franka_msgs/msg/errors.hpp"
 #include "messages_fr3/srv/set_pose.hpp"
+#include "messages_fr3/msg/set_pose.hpp"
+#include "std_msgs/msg/float64_multi_array.hpp"
 
 #include "franka_semantic_components/franka_robot_model.hpp"
 #include "franka_semantic_components/franka_robot_state.hpp"
+
+//#include "cartesian_impedance_control/safety_bubble.hpp"
 
 #define IDENTITY Eigen::MatrixXd::Identity(6, 6)
 
@@ -81,15 +85,40 @@ public:
     void setPose(const std::shared_ptr<messages_fr3::srv::SetPose::Request> request, 
     std::shared_ptr<messages_fr3::srv::SetPose::Response> response);
       
+  Eigen::Matrix<double, 6, 6> Lambda = IDENTITY;                                           // operational space mass matrix
+  Eigen::Vector3d position_d_;
 
  private:
     //Nodes
     rclcpp::Subscription<franka_msgs::msg::FrankaRobotState>::SharedPtr franka_state_subscriber = nullptr;
     rclcpp::Service<messages_fr3::srv::SetPose>::SharedPtr pose_srv_;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr safety_bubble_subscriber;
+    rclcpp::Subscription<messages_fr3::msg::SetPose>::SharedPtr safety_bubble_new_position_subscriber;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hold_stiffness_subscriber_;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hold_force_subscriber_;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr goal_offset_subscriber_;
+
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr lambda_publisher;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr K_publisher;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr D_publisher;
+    rclcpp::Publisher<messages_fr3::msg::SetPose>::SharedPtr avoid_goal_publisher;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr jacobian_publisher;
+
+    std::array<double, 36> lambda_array;
+    std::array<double, 36> K_array;
+    std::array<double, 36> D_array;
+    messages_fr3::msg::SetPose position_d_target_msg;
 
 
     //Functions
     void topic_callback(const std::shared_ptr<franka_msgs::msg::FrankaRobotState> msg);
+    void f_safety_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
+    std_msgs::msg::Float64MultiArray f_safety_;
+    void new_pose_callback(const messages_fr3::msg::SetPose::SharedPtr msg);
+    void hold_stiffness_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
+    void hold_force_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
+    void offset_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
+
     void updateJointStates();
     void update_stiffness_and_references();
     void arrayToMatrix(const std::array<double, 6>& inputArray, Eigen::Matrix<double, 6, 1>& resultMatrix);
@@ -119,7 +148,6 @@ public:
     const double dt = 0.001;
                 
     //Impedance control variables              
-    Eigen::Matrix<double, 6, 6> Lambda = IDENTITY;                                           // operational space mass matrix
     Eigen::Matrix<double, 6, 6> Sm = IDENTITY;                                               // task space selection matrix for positions and rotation
     Eigen::Matrix<double, 6, 6> Sf = Eigen::MatrixXd::Zero(6, 6);                            // task space selection matrix for forces
     Eigen::Matrix<double, 6, 6> K =  (Eigen::MatrixXd(6,6) << 250,   0,   0,   0,   0,   0,
@@ -160,10 +188,9 @@ public:
     Eigen::Matrix<double, 6, 6> cartesian_stiffness_target_;                                 // impedance damping term
     Eigen::Matrix<double, 6, 6> cartesian_damping_target_;                                   // impedance damping term
     Eigen::Matrix<double, 6, 6> cartesian_inertia_target_;                                   // impedance damping term
-    Eigen::Vector3d position_d_target_ = {0.5, 0.0, 0.5};
+    Eigen::Vector3d position_d_target_ = {0.25, -0.4, 0.4}; ////////////////////////////////////////////////////////////////////////////////////////////////s
     Eigen::Vector3d rotation_d_target_ = {M_PI, 0.0, 0.0};
     Eigen::Quaterniond orientation_d_target_;
-    Eigen::Vector3d position_d_;
     Eigen::Quaterniond orientation_d_; 
     Eigen::Matrix<double, 6, 1> F_impedance;  
     Eigen::Matrix<double, 6, 1> F_contact_des = Eigen::MatrixXd::Zero(6, 1);                 // desired contact force
@@ -175,6 +202,11 @@ public:
     double nullspace_stiffness_{0.001};
     double nullspace_stiffness_target_{0.001};
 
+    Eigen::Matrix<double, 6, 1> F_safety;
+    Eigen::Matrix<double, 6, 1> F_hold;
+    Eigen::Matrix<double, 6, 6> K_hold; //contains the adjusted stiffness for the case of hold
+    Eigen::Vector3d Offset;
+    
     //Logging
     int outcounter = 0;
     const int update_frequency = 2; //frequency for update outputs
@@ -197,6 +229,6 @@ public:
 
     //Filter-parameters
     double filter_params_{0.001};
-    int mode_ = 2;
+    int mode_ = 1;
 };
 }  // namespace cartesian_impedance_control

@@ -133,7 +133,7 @@ CallbackReturn CartesianImpedanceController::on_configure(const rclcpp_lifecycle
   franka_robot_model_ = std::make_unique<franka_semantic_components::FrankaRobotModel>(
   franka_semantic_components::FrankaRobotModel(robot_name_ + "/" + k_robot_model_interface_name,
                                                robot_name_ + "/" + k_robot_state_interface_name));
-                                               
+                        
   try {
     rclcpp::QoS qos_profile(1); // Depth of the message queue
     qos_profile.reliability(RMW_QOS_POLICY_RELIABILITY_RELIABLE);
@@ -141,6 +141,31 @@ CallbackReturn CartesianImpedanceController::on_configure(const rclcpp_lifecycle
     "franka_robot_state_broadcaster/robot_state", qos_profile, 
     std::bind(&CartesianImpedanceController::topic_callback, this, std::placeholders::_1));
     std::cout << "Succesfully subscribed to robot_state_broadcaster" << std::endl;
+
+    safety_bubble_subscriber = get_node()->create_subscription<std_msgs::msg::Float64MultiArray>(
+      "external_force_topic", 10, std::bind(&CartesianImpedanceController::f_safety_callback, this, std::placeholders::_1));
+    std::cout << "Successfully subscribed to safety_bubble" << std::endl;
+
+    safety_bubble_new_position_subscriber = get_node()->create_subscription<messages_fr3::msg::SetPose>("set_new_pose",10,
+      std::bind(&CartesianImpedanceController::new_pose_callback, this, std::placeholders::_1));
+
+    hold_stiffness_subscriber_ = get_node()->create_subscription<std_msgs::msg::Float64MultiArray>(
+      "hold_stiffness", 10, std::bind(&CartesianImpedanceController::hold_stiffness_callback, this, std::placeholders::_1));
+
+    hold_force_subscriber_ = get_node()->create_subscription<std_msgs::msg::Float64MultiArray>("hold_test_force", 10,
+      std::bind(&CartesianImpedanceController::hold_force_callback, this, std::placeholders::_1));
+    
+    goal_offset_subscriber_ = get_node()->create_subscription<std_msgs::msg::Float64MultiArray>("goal_offset_topic", 10,
+      std::bind(&CartesianImpedanceController::offset_callback, this, std::placeholders::_1));
+
+    hold_stiffness_subscriber_ = get_node()->create_subscription<std_msgs::msg::Float64MultiArray>(
+    "hold_stiffness", 10, std::bind(&CartesianImpedanceController::hold_stiffness_callback, this, std::placeholders::_1));
+
+    lambda_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("inertia_matrix_topic", 10);
+    D_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("damping_matrix_topic", 10);
+    K_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("stiffness_matrix_topic", 10); 
+    avoid_goal_publisher = get_node()->create_publisher<messages_fr3::msg::SetPose>("original_pose", 10);
+    jacobian_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("jacobian_topic", 10); 
   }
 
   catch (const std::exception& e) {
@@ -200,6 +225,38 @@ void CartesianImpedanceController::updateJointStates() {
   }
 }
 
+void CartesianImpedanceController::f_safety_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
+  if (msg->data.size() !=6){
+    RCLCPP_ERROR(get_node()->get_logger(), "Received data size is not 6");
+    return;
+  }
+  //RCLCPP_INFO(get_node()->get_logger(), "Received message values: [%f, %f, %f, %f, %f, %f]",
+    //            msg->data[0], msg->data[1], msg->data[2], msg->data[3], msg->data[4], msg->data[5]);
+  Eigen::Map<Eigen::Matrix<double,6,1>> F_safety(msg->data.data());
+  /*if (F_safety.isZero()){
+        RCLCPP_ERROR(get_node()->get_logger(), "f_safety is zero");
+    }
+    if (!F_safety.isZero()){
+        RCLCPP_ERROR(get_node()->get_logger(), "f_safety is not zero");
+    }*/
+}
+
+void CartesianImpedanceController::new_pose_callback(const messages_fr3::msg::SetPose::SharedPtr msg){
+  position_d_ << msg->x, msg->y, msg->z;
+}
+
+void CartesianImpedanceController::hold_stiffness_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
+  Eigen::Map<Eigen::Matrix<double, 6, 6>> K_hold(msg->data.data());
+}
+
+void CartesianImpedanceController::hold_force_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
+  Eigen::Map<Eigen::Matrix<double, 6, 1>> F_hold(msg->data.data());
+}
+
+void CartesianImpedanceController::offset_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
+  Eigen::Map<Eigen::Vector3d> Offset(msg->data.data());
+}
+
 controller_interface::return_type CartesianImpedanceController::update(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/) {  
   // if (outcounter == 0){
   // std::cout << "Enter 1 if you want to track a desired position or 2 if you want to use free floating with optionally shaped inertia" << std::endl;
@@ -217,6 +274,15 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   std::array<double, 16> pose = franka_robot_model_->getPoseMatrix(franka::Frame::kEndEffector);
   Eigen::Map<Eigen::Matrix<double, 7, 1>> coriolis(coriolis_array.data());
   Eigen::Map<Eigen::Matrix<double, 6, 7>> jacobian(jacobian_array.data());
+  
+  auto jacobian_msg = std_msgs::msg::Float64MultiArray();
+  for(long unsigned int i = 0; i < jacobian_array.size(); ++i){
+    jacobian_msg.data.push_back(jacobian_array[i]);
+  }
+ // RCLCPP_INFO(get_node()->get_logger(), "jacobian message values: [%f, %f, %f, %f, %f, %f]",
+   //            jacobian_msg.data[0], jacobian_msg.data[1], jacobian_msg.data[2], jacobian_msg.data[3], jacobian_msg.data[4], jacobian_msg.data[5]);
+  jacobian_publisher->publish(jacobian_msg);
+
   Eigen::Map<Eigen::Matrix<double, 7, 7>> M(mass.data());
   Eigen::Affine3d transform(Eigen::Matrix4d::Map(pose.data()));
   Eigen::Vector3d position(transform.translation());
@@ -227,7 +293,7 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   updateJointStates(); 
 
   
-  error.head(3) << position - position_d_;
+  error.head(3) << position - position_d_ + Offset;
 
   if (orientation_d_.coeffs().dot(orientation.coeffs()) < 0.0) {
     orientation.coeffs() << -orientation.coeffs();
@@ -240,15 +306,44 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
     I_error(i,0) = std::min(std::max(-max_I(i,0),  I_error(i,0)), max_I(i,0)); 
   }
 
+  avoid_goal_publisher->publish(position_d_target_msg);
   Lambda = (jacobian * M.inverse() * jacobian.transpose()).inverse();
   // Theta = T*Lambda;
   // F_impedance = -1*(Lambda * Theta.inverse() - IDENTITY) * F_ext;
   //Inertia of the robot
+  
+  //publishes lambda Matrix
+  Eigen::Map<Eigen::Matrix<double,6,6>>(lambda_array.data()) = Lambda;
+  auto lambda_msg = std_msgs::msg::Float64MultiArray();
+  for(long unsigned int i = 0; i < lambda_array.size(); ++i){
+    lambda_msg.data.push_back(lambda_array[i]);
+  }
+  lambda_publisher->publish(lambda_msg);
+  /*
+  //publishes stiffness Matrix
+  Eigen::Map<Eigen::Matrix<double,6,6>>(K_array.data()) = K;
+  auto K_msg = std_msgs::msg::Float64MultiArray();
+  for(long unsigned int i = 0; i < K_array.size(); ++i){
+    K_msg.data.push_back(K_array[i]);
+  }
+  K_publisher->publish(K_msg);
+
+  //publishes damping Matrix
+  Eigen::Map<Eigen::Matrix<double,6,6>>(D_array.data()) = D;
+  auto D_msg = std_msgs::msg::Float64MultiArray();
+  for(long unsigned int i = 0; i < D_array.size(); ++i){
+    D_msg.data.push_back(D_array[i]);
+  }
+  D_publisher->publish(D_msg);
+  */
   switch (mode_)
   {
   case 1:
     Theta = Lambda;
-    F_impedance = -1 * (D * (jacobian * dq_) + K * error /*+ I_error*/);
+    if (!K_hold.isZero()){
+      F_impedance = -1 * (D * (jacobian * dq_) + K_hold * error /*+ I_error*/) + F_safety + F_hold; //F_hold is just for testing purposes (the force that needs to be held against)
+    }
+    F_impedance = -1 * (D * (jacobian * dq_) + K * error /*+ I_error*/) + F_safety;
     break;
 
   case 2:
@@ -298,7 +393,7 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
     std::cout << coriolis << std::endl;
     std::cout << "Inertia scaling [m]: " << std::endl;
     std::cout << T << std::endl;
-  }
+  } 
   outcounter++;
   update_stiffness_and_references();
   return controller_interface::return_type::OK;

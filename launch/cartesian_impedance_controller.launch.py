@@ -75,4 +75,22 @@ def generate_launch_description():
             arguments=['cartesian_impedance_controller'],
             output='screen',
         ),
+
+        Node(
+            package='cartesian_impedance_control',
+            executable='safety_bubble',
+            name='safety_bubble',
+        ),
+
+        Node(
+           package='cartesian_impedance_control',
+           executable='test_inputs',
+           name='test_input',
+        ),
+
+        Node(
+            package='cartesian_impedance_control',
+            executable='test_results',
+            name='test_results',
+        ),
     ])

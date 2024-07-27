@@ -23,10 +23,11 @@ find_package(hardware_interface REQUIRED)
 find_package(franka_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(franka_semantic_components REQUIRED)
+find_package(franka_hardware REQUIRED)
 find_package(generate_parameter_library)
 find_package(std_msgs REQUIRED)
 find_package(messages_fr3 REQUIRED)
-
+#find_package(safety_bubble REQUIRED)
 
 add_library(
         ${PROJECT_NAME}
@@ -57,13 +58,24 @@ pluginlib_export_plugin_description_file(
         controller_interface cartesian_impedance_control.xml)
 
 add_executable(user_input_client src/user_input_client.cpp)
+add_executable(safety_bubble src/safety_bubble.cpp)
+add_executable(test_inputs src/test_inputs.cpp)
+add_executable(test_results src/test_results.cpp)
 target_link_libraries(user_input_client ${PROJECT_NAME})
+target_link_libraries(safety_bubble ${PROJECT_NAME})
+target_link_libraries(test_inputs ${PROJECT_NAME})
+target_link_libraries(test_results ${PROJECT_NAME})
+target_link_libraries(${PROJECT_NAME} rclcpp::rclcpp) #Hinzugefügt
 
 
+include_directories(include)
 
 
 install(TARGETS
         user_input_client
+        safety_bubble
+        test_inputs
+        test_results
         DESTINATION lib/${PROJECT_NAME})
 
 install(
