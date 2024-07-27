@@ -1,0 +1,36 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/joana/franka_ros2_ws/install/cartesian_impedance_control/include/**",
+        "/home/joana/franka_ros2_ws/install/messages_fr3/include/**",
+        "/home/joana/franka_ros2_ws/install/joint_trajectory_controller/include/**",
+        "/home/joana/franka_ros2_ws/install/franka_robot_state_broadcaster/include/**",
+        "/home/joana/franka_ros2_ws/install/franka_example_controllers/include/**",
+        "/home/joana/franka_ros2_ws/install/franka_semantic_components/include/**",
+        "/home/joana/franka_ros2_ws/install/franka_hardware/include/**",
+        "/home/joana/franka_ros2_ws/install/franka_msgs/include/**",
+        "/opt/ros/humble/include/**",
+        "/home/joana/franka_ros2_ws/src/cartesian_impedance_control/include/**",
+        "/home/joana/franka_ros2_ws/src/franka_ros2/franka_example_controllers/include/**",
+        "/home/joana/franka_ros2_ws/src/franka_ros2/franka_gripper/include/**",
+        "/home/joana/franka_ros2_ws/src/franka_ros2/franka_hardware/include/**",
+        "/home/joana/franka_ros2_ws/src/franka_ros2/franka_robot_state_broadcaster/include/**",
+        "/home/joana/franka_ros2_ws/src/franka_ros2/franka_semantic_components/include/**",
+        "/home/joana/franka_ros2_ws/src/franka_ros2/joint_trajectory_controller/include/**",
+        "include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}
