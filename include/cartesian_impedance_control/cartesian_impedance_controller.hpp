@@ -33,6 +33,7 @@
 
 #include <Eigen/Dense>
 #include <Eigen/Eigen>
+#include <Eigen/Eigenvalues>
 
 #include <controller_interface/controller_interface.hpp>
 
@@ -95,14 +96,19 @@ public:
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr safety_bubble_subscriber;
     rclcpp::Subscription<messages_fr3::msg::SetPose>::SharedPtr safety_bubble_new_position_subscriber;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hold_stiffness_subscriber_;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr safety_bubble_damping_subscriber;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hold_force_subscriber_;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr goal_offset_subscriber_;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr goal_hand_subscriber_; //in the case of follow and hold, is new pose (position of the hand) directly received through this subscriber
+
 
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr lambda_publisher;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr K_publisher;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr D_publisher;
     rclcpp::Publisher<messages_fr3::msg::SetPose>::SharedPtr avoid_goal_publisher;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr jacobian_publisher;
+    rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr dq_publisher;
+
 
     std::array<double, 36> lambda_array;
     std::array<double, 36> K_array;
@@ -116,14 +122,19 @@ public:
     std_msgs::msg::Float64MultiArray f_safety_;
     void new_pose_callback(const messages_fr3::msg::SetPose::SharedPtr msg);
     void hold_stiffness_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
+    void safety_bubble_damping_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
     void hold_force_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
     void offset_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
+    void hand_goal_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
+
 
     void updateJointStates();
     void update_stiffness_and_references();
     void arrayToMatrix(const std::array<double, 6>& inputArray, Eigen::Matrix<double, 6, 1>& resultMatrix);
     void arrayToMatrix(const std::array<double, 7>& inputArray, Eigen::Matrix<double, 7, 1>& resultMatrix);
     Eigen::Matrix<double, 7, 1> saturateTorqueRate(const Eigen::Matrix<double, 7, 1>& tau_d_calculated, const Eigen::Matrix<double, 7, 1>& tau_J_d);  
+    Eigen::Matrix<double, 7, 1> saturateTorque(const Eigen::Matrix<double, 7, 1>& tau_d_calculated);  
+
     std::array<double, 6> convertToStdArray(const geometry_msgs::msg::WrenchStamped& wrench);
     //State vectors and matrices
     std::array<double, 7> q_subscribed;
@@ -150,33 +161,46 @@ public:
     //Impedance control variables              
     Eigen::Matrix<double, 6, 6> Sm = IDENTITY;                                               // task space selection matrix for positions and rotation
     Eigen::Matrix<double, 6, 6> Sf = Eigen::MatrixXd::Zero(6, 6);                            // task space selection matrix for forces
-    Eigen::Matrix<double, 6, 6> K =  (Eigen::MatrixXd(6,6) << 250,   0,   0,   0,   0,   0,
-                                                                0, 250,   0,   0,   0,   0,
+   Eigen::Matrix<double, 6, 6> K =  (Eigen::MatrixXd(6,6) << 50,   0,   0,   0,   0,   0,
+                                                                0, 50,   0,   0,   0,   0,
+                                                                0,   0, 50,   0,   0,   0,  // impedance stiffness term
+                                                                0,   0,   0, 26,   0,   0,
+                                                                0,   0,   0,   0, 26,   0,
+                                                                0,   0,   0,   0,   0,  2).finished(); 
+    Eigen::Matrix<double, 6, 6> D =  (Eigen::MatrixXd(6,6) <<  14.2,   0,   0,   0,   0,   0,
+                                                                0,  14.2,   0,   0,   0,   0,
+                                                                0,   0,  14.2,   0,   0,   0,  // impedance damping term
+                                                                0,   0,   0,   10.1,   0,   0,
+                                                                0,   0,   0,   0,   10.1,   0,
+                                                                0,   0,   0,   0,   0,      2.8).finished();  
+
+    /* Eigen::Matrix<double, 6, 6> K =  (Eigen::MatrixXd(6,6) << 500,   0,   0,   0,   0,   0,
+                                                                 0, 500,   0,   0,   0,   0,
+                                                                 0,   0, 500,   0,   0,   0,  // impedance stiffness term
+                                                                 0,   0,   0,  260,   0,   0,
+                                                                 0,   0,   0,   0,  260,   0,
+                                                                 0,   0,   0,   0,   0,  20).finished();
+     Eigen::Matrix<double, 6, 6> D =  (Eigen::MatrixXd(6,6) <<  44.72,   0,   0,   0,   0,   0,
+                                                                 0,  44.72,   0,   0,   0,   0,
+                                                                0,   0,  44.72,   0,   0,   0,  // impedance damping term
+                                                                 0,   0,   0,  32.2,   0,   0,
+                                                                 0,   0,   0,   0,  32.2,   0,
+                                                                 0,   0,   0,   0,   0,   8.9).finished(); */
+
+
+    /* Eigen::Matrix<double, 6, 6> K =  (Eigen::MatrixXd(6,6) << 250,   0,   0,   0,   0,   0,
+                                                                 0, 250,   0,   0,   0,   0,
                                                                 0,   0, 250,   0,   0,   0,  // impedance stiffness term
-                                                                0,   0,   0, 130,   0,   0,
-                                                                0,   0,   0,   0, 130,   0,
-                                                                0,   0,   0,   0,   0,  10).finished();
+                                                                0,   0,   0,  130,   0,   0,
+                                                                0,   0,   0,   0,  130,   0,
+                                                                0,   0,   0,   0,   0,  10).finished(); 
 
     Eigen::Matrix<double, 6, 6> D =  (Eigen::MatrixXd(6,6) <<  35,   0,   0,   0,   0,   0,
                                                                 0,  35,   0,   0,   0,   0,
                                                                 0,   0,  35,   0,   0,   0,  // impedance damping term
-                                                                0,   0,   0,   25,   0,   0,
-                                                                0,   0,   0,   0,   25,   0,
-                                                                0,   0,   0,   0,   0,   6).finished();
-
-    // Eigen::Matrix<double, 6, 6> K =  (Eigen::MatrixXd(6,6) << 250,   0,   0,   0,   0,   0,
-    //                                                             0, 250,   0,   0,   0,   0,
-    //                                                             0,   0, 250,   0,   0,   0,  // impedance stiffness term
-    //                                                             0,   0,   0,  80,   0,   0,
-    //                                                             0,   0,   0,   0,  80,   0,
-    //                                                             0,   0,   0,   0,   0,  10).finished();
-
-    // Eigen::Matrix<double, 6, 6> D =  (Eigen::MatrixXd(6,6) <<  30,   0,   0,   0,   0,   0,
-    //                                                             0,  30,   0,   0,   0,   0,
-    //                                                             0,   0,  30,   0,   0,   0,  // impedance damping term
-    //                                                             0,   0,   0,  18,   0,   0,
-    //                                                             0,   0,   0,   0,  18,   0,
-    //                                                             0,   0,   0,   0,   0,   9).finished();
+                                                                0,   0,   0,  25,   0,   0,
+                                                                0,   0,   0,   0,  25,   0,
+                                                                0,   0,   0,   0,   0,   6).finished(); */
     Eigen::Matrix<double, 6, 6> Theta = IDENTITY;
     Eigen::Matrix<double, 6, 6> T = (Eigen::MatrixXd(6,6) <<       1,   0,   0,   0,   0,   0,
                                                                    0,   1,   0,   0,   0,   0,
@@ -188,7 +212,7 @@ public:
     Eigen::Matrix<double, 6, 6> cartesian_stiffness_target_;                                 // impedance damping term
     Eigen::Matrix<double, 6, 6> cartesian_damping_target_;                                   // impedance damping term
     Eigen::Matrix<double, 6, 6> cartesian_inertia_target_;                                   // impedance damping term
-    Eigen::Vector3d position_d_target_ = {0.25, -0.4, 0.4}; ////////////////////////////////////////////////////////////////////////////////////////////////s
+    Eigen::Vector3d position_d_target_ = {0.4, 0.5, 0.4}; ////////////////////////////////////////////////////////////////////////////////////////////////s
     Eigen::Vector3d rotation_d_target_ = {M_PI, 0.0, 0.0};
     Eigen::Quaterniond orientation_d_target_;
     Eigen::Quaterniond orientation_d_; 
@@ -202,9 +226,17 @@ public:
     double nullspace_stiffness_{0.001};
     double nullspace_stiffness_target_{0.001};
 
+    bool maximum_error_necessary = false;
+    double error_factor = 1;
+    double max_error_factor = 1;
+    double max_error = 0.2;
+    Eigen::Matrix<double, 6, 1> scaled_error;                                                // scaled pose error (6d)
+
     Eigen::Matrix<double, 6, 1> F_safety;
     Eigen::Matrix<double, 6, 1> F_hold;
     Eigen::Matrix<double, 6, 6> K_hold; //contains the adjusted stiffness for the case of hold
+    Eigen::Matrix<double, 6, 6> D_h; //damping matrix for safety_bubble
+
     Eigen::Vector3d Offset;
     
     //Logging

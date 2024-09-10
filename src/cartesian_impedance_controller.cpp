@@ -74,6 +74,37 @@ Eigen::Matrix<double, 7, 1> CartesianImpedanceController::saturateTorqueRate(
   return tau_d_saturated;
 }
 
+Eigen::Matrix<double, 7, 1> CartesianImpedanceController::saturateTorque(
+  const Eigen::Matrix<double, 7, 1>& tau_d) {  
+  Eigen::Matrix<double, 7, 1> tau_d_calculated = tau_d;
+  Eigen::Matrix<double, 7, 1> tau_d_saturated{};
+  Eigen::Matrix<double, 7, 1> tau_max;
+  tau_max << 87, 87, 87, 87, 12, 12, 12;  
+  bool need_to_saturate = false;
+  double max_factor = 1;
+  double factor;
+  for (size_t i = 0; i < 7; i++) {
+    if (abs(tau_d_calculated(i)) > abs(tau_max(i))){
+      need_to_saturate = true;
+      factor = abs(tau_max(i))/abs(tau_d_calculated(i));
+      if (factor < max_factor){
+        max_factor = factor;
+      }
+    }
+  }
+ // RCLCPP_INFO(get_node()->get_logger(), "tau_d_Calculated vorher: [%f, %f, %f, %f, %f, %f, %f, %f]",
+   //     tau_d_calculated[0], tau_d_calculated[1], tau_d_calculated[2], tau_d_calculated[3], tau_d_calculated[4], tau_d_calculated[5], tau_d_calculated[6], tau_d_calculated[7]);
+  if (need_to_saturate){
+    for (size_t i = 0; i < 7; i++){
+      tau_d_saturated(i) = tau_d_calculated(i)*max_factor;
+    }
+    RCLCPP_INFO(get_node()->get_logger(), "tau_d saturated"); 
+  }
+  else tau_d_saturated = tau_d_calculated;
+ // RCLCPP_INFO(get_node()->get_logger(), "tau_d_saturated nachher: [%f, %f, %f, %f, %f, %f, %f, %f]",
+   //     tau_d_saturated[0], tau_d_saturated[1], tau_d_saturated[2], tau_d_saturated[3], tau_d_saturated[4], tau_d_saturated[5], tau_d_saturated[6], tau_d_saturated[7]);
+  return tau_d_saturated;
+}
 
 inline void pseudoInverse(const Eigen::MatrixXd& M_, Eigen::MatrixXd& M_pinv_, bool damped = true) {
   double lambda_ = damped ? 0.2 : 0.0;
@@ -146,11 +177,14 @@ CallbackReturn CartesianImpedanceController::on_configure(const rclcpp_lifecycle
       "external_force_topic", 10, std::bind(&CartesianImpedanceController::f_safety_callback, this, std::placeholders::_1));
     std::cout << "Successfully subscribed to safety_bubble" << std::endl;
 
-    safety_bubble_new_position_subscriber = get_node()->create_subscription<messages_fr3::msg::SetPose>("set_new_pose",10,
-      std::bind(&CartesianImpedanceController::new_pose_callback, this, std::placeholders::_1));
+   // safety_bubble_new_position_subscriber = get_node()->create_subscription<messages_fr3::msg::SetPose>("set_new_pose",10,
+   //   std::bind(&CartesianImpedanceController::new_pose_callback, this, std::placeholders::_1));
 
     hold_stiffness_subscriber_ = get_node()->create_subscription<std_msgs::msg::Float64MultiArray>(
       "hold_stiffness", 10, std::bind(&CartesianImpedanceController::hold_stiffness_callback, this, std::placeholders::_1));
+
+    safety_bubble_damping_subscriber = get_node()->create_subscription<std_msgs::msg::Float64MultiArray>(
+      "D_h_topic", 10, std::bind(&CartesianImpedanceController::safety_bubble_damping_callback, this, std::placeholders::_1));
 
     hold_force_subscriber_ = get_node()->create_subscription<std_msgs::msg::Float64MultiArray>("hold_test_force", 10,
       std::bind(&CartesianImpedanceController::hold_force_callback, this, std::placeholders::_1));
@@ -158,14 +192,15 @@ CallbackReturn CartesianImpedanceController::on_configure(const rclcpp_lifecycle
     goal_offset_subscriber_ = get_node()->create_subscription<std_msgs::msg::Float64MultiArray>("goal_offset_topic", 10,
       std::bind(&CartesianImpedanceController::offset_callback, this, std::placeholders::_1));
 
-    hold_stiffness_subscriber_ = get_node()->create_subscription<std_msgs::msg::Float64MultiArray>(
-    "hold_stiffness", 10, std::bind(&CartesianImpedanceController::hold_stiffness_callback, this, std::placeholders::_1));
+    goal_hand_subscriber_ = get_node()->create_subscription<std_msgs::msg::Float64MultiArray>("hand_goal_topic", 10,
+      std::bind(&CartesianImpedanceController::hand_goal_callback, this, std::placeholders::_1));
 
     lambda_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("inertia_matrix_topic", 10);
     D_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("damping_matrix_topic", 10);
     K_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("stiffness_matrix_topic", 10); 
     avoid_goal_publisher = get_node()->create_publisher<messages_fr3::msg::SetPose>("original_pose", 10);
     jacobian_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("jacobian_topic", 10); 
+    dq_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("dq_topic", 10);
   }
 
   catch (const std::exception& e) {
@@ -226,35 +261,50 @@ void CartesianImpedanceController::updateJointStates() {
 }
 
 void CartesianImpedanceController::f_safety_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
-  if (msg->data.size() !=6){
-    RCLCPP_ERROR(get_node()->get_logger(), "Received data size is not 6");
-    return;
-  }
   //RCLCPP_INFO(get_node()->get_logger(), "Received message values: [%f, %f, %f, %f, %f, %f]",
-    //            msg->data[0], msg->data[1], msg->data[2], msg->data[3], msg->data[4], msg->data[5]);
-  Eigen::Map<Eigen::Matrix<double,6,1>> F_safety(msg->data.data());
-  /*if (F_safety.isZero()){
-        RCLCPP_ERROR(get_node()->get_logger(), "f_safety is zero");
-    }
-    if (!F_safety.isZero()){
-        RCLCPP_ERROR(get_node()->get_logger(), "f_safety is not zero");
-    }*/
+    //msg->data[0], msg->data[1], msg->data[2], msg->data[3], msg->data[4], msg->data[5]);
+  for (size_t j = 0; j < 6; ++j) {
+        F_safety(j) = msg->data[j];
+     }
 }
 
-void CartesianImpedanceController::new_pose_callback(const messages_fr3::msg::SetPose::SharedPtr msg){
-  position_d_ << msg->x, msg->y, msg->z;
+void CartesianImpedanceController::hand_goal_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
+  for (size_t j = 0; j < 3; ++j) {
+        position_d_target_(j) = msg->data[j];
+     }
+  RCLCPP_INFO(get_node()->get_logger(), "hold goal msg values: [%f, %f, %f]",
+                msg->data[0], msg->data[1], msg->data[2]); 
 }
 
 void CartesianImpedanceController::hold_stiffness_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
-  Eigen::Map<Eigen::Matrix<double, 6, 6>> K_hold(msg->data.data());
+  for (size_t i = 0; i < 6; ++i) {
+        for (size_t j = 0; j < 6; ++j) {
+            K_hold(i, j) = msg->data[i * 6 + j];
+        }
+    }
+}
+
+void CartesianImpedanceController::safety_bubble_damping_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
+  for (size_t i = 0; i < 6; ++i) {
+        for (size_t j = 0; j < 6; ++j) {
+            D_h(i, j) = msg->data[i * 6 + j];
+        }
+    }
 }
 
 void CartesianImpedanceController::hold_force_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
-  Eigen::Map<Eigen::Matrix<double, 6, 1>> F_hold(msg->data.data());
+ RCLCPP_INFO(get_node()->get_logger(), "hold force msg values: [%f, %f, %f, %f, %f, %f]",
+                msg->data[0], msg->data[1], msg->data[2],
+                msg->data[3], msg->data[4], msg->data[5]); 
+  for (size_t j = 0; j < 6; ++j) {
+        F_hold(j) = msg->data[j];
+     }
 }
 
 void CartesianImpedanceController::offset_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
-  Eigen::Map<Eigen::Vector3d> Offset(msg->data.data());
+  for (size_t j = 0; j < 3; ++j) {
+        Offset(j) = msg->data[j];
+     }
 }
 
 controller_interface::return_type CartesianImpedanceController::update(const rclcpp::Time& /*time*/, const rclcpp::Duration& /*period*/) {  
@@ -279,9 +329,12 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   for(long unsigned int i = 0; i < jacobian_array.size(); ++i){
     jacobian_msg.data.push_back(jacobian_array[i]);
   }
- // RCLCPP_INFO(get_node()->get_logger(), "jacobian message values: [%f, %f, %f, %f, %f, %f]",
-   //            jacobian_msg.data[0], jacobian_msg.data[1], jacobian_msg.data[2], jacobian_msg.data[3], jacobian_msg.data[4], jacobian_msg.data[5]);
+  auto dq_msg = std_msgs::msg::Float64MultiArray();
+  for(size_t i = 0; i < 7; ++i){
+    dq_msg.data.push_back(dq_(i));
+  }
   jacobian_publisher->publish(jacobian_msg);
+  dq_publisher->publish(dq_msg);
 
   Eigen::Map<Eigen::Matrix<double, 7, 7>> M(mass.data());
   Eigen::Affine3d transform(Eigen::Matrix4d::Map(pose.data()));
@@ -293,8 +346,7 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   updateJointStates(); 
 
   
-  error.head(3) << position - position_d_ + Offset;
-
+  error.head(3) << position - position_d_ /*- Offset*/; 
   if (orientation_d_.coeffs().dot(orientation.coeffs()) < 0.0) {
     orientation.coeffs() << -orientation.coeffs();
   }
@@ -305,6 +357,28 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   for (int i = 0; i < 6; i++){
     I_error(i,0) = std::min(std::max(-max_I(i,0),  I_error(i,0)), max_I(i,0)); 
   }
+/* maximum_error_necessary = false;
+      error_factor = 1;
+      max_error_factor = 1;
+      
+      for (size_t i = 0; i < 3; i++){
+        if (error(i) > max_error){
+          maximum_error_necessary = true;
+          error_factor = max_error/error(i);
+          if (max_error_factor > error_factor){
+            max_error_factor = error_factor;
+          }
+        }
+      }
+      if (maximum_error_necessary){
+        for (size_t i = 0; i < 3; i++){
+          scaled_error(i) = error(i) * max_error_factor;
+        }
+        for (size_t i = 3; i < 6; i++){
+          scaled_error(i) = error(i);
+        }
+       }
+      else*/ scaled_error = error;
 
   avoid_goal_publisher->publish(position_d_target_msg);
   Lambda = (jacobian * M.inverse() * jacobian.transpose()).inverse();
@@ -313,37 +387,41 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   //Inertia of the robot
   
   //publishes lambda Matrix
-  Eigen::Map<Eigen::Matrix<double,6,6>>(lambda_array.data()) = Lambda;
+  int index_lambda = 0;
+  for(int i = 0; i < 6; i++) {
+    for(int j = 0; j < 6; j++) {
+      lambda_array[index_lambda++] = Lambda(i, j);
+    }
+  } 
   auto lambda_msg = std_msgs::msg::Float64MultiArray();
   for(long unsigned int i = 0; i < lambda_array.size(); ++i){
     lambda_msg.data.push_back(lambda_array[i]);
   }
   lambda_publisher->publish(lambda_msg);
-  /*
-  //publishes stiffness Matrix
-  Eigen::Map<Eigen::Matrix<double,6,6>>(K_array.data()) = K;
-  auto K_msg = std_msgs::msg::Float64MultiArray();
-  for(long unsigned int i = 0; i < K_array.size(); ++i){
-    K_msg.data.push_back(K_array[i]);
-  }
-  K_publisher->publish(K_msg);
-
+  
   //publishes damping Matrix
-  Eigen::Map<Eigen::Matrix<double,6,6>>(D_array.data()) = D;
+  int index_D = 0;
+  for(int i = 0; i < 6; i++) {
+    for(int j = 0; j < 6; j++) {
+      D_array[index_D++] = D(i, j);
+    }
+  } 
   auto D_msg = std_msgs::msg::Float64MultiArray();
   for(long unsigned int i = 0; i < D_array.size(); ++i){
     D_msg.data.push_back(D_array[i]);
   }
   D_publisher->publish(D_msg);
-  */
+  
   switch (mode_)
   {
   case 1:
     Theta = Lambda;
     if (!K_hold.isZero()){
-      F_impedance = -1 * (D * (jacobian * dq_) + K_hold * error /*+ I_error*/) + F_safety + F_hold; //F_hold is just for testing purposes (the force that needs to be held against)
+      F_impedance = -1 * (D_h * (jacobian * dq_) + K_hold * error  /*+ I_error*/) + F_hold; 
     }
-    F_impedance = -1 * (D * (jacobian * dq_) + K * error /*+ I_error*/) + F_safety;
+    else{
+      F_impedance = -1 * ((D+D_h) * (jacobian * dq_) + K * scaled_error /*+ I_error*/) + F_safety;
+      }
     break;
 
   case 2:
@@ -354,7 +432,8 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   default:
     break;
   }
-
+ // RCLCPP_INFO(get_node()->get_logger(), "F_impedance: [%f, %f, %f, %f, %f, %f]",
+ //   F_impedance[0], F_impedance[1], F_impedance[2], F_impedance[3], F_impedance[4], F_impedance[5]);
   F_ext = 0.9 * F_ext + 0.1 * O_F_ext_hat_K_M; //Filtering 
   I_F_error += dt * Sf* (F_contact_des - F_ext);
   F_cmd = Sf*(0.4 * (F_contact_des - F_ext) + 0.9 * I_F_error + 0.9 * F_contact_des);
@@ -371,6 +450,7 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   auto tau_d_placeholder = tau_impedance + tau_nullspace + coriolis; //add nullspace and coriolis components to desired torque
   tau_d << tau_d_placeholder;
   tau_d << saturateTorqueRate(tau_d, tau_J_d_M);  // Saturate torque rate to avoid discontinuities
+  tau_d << saturateTorque(tau_d);
   tau_J_d_M = tau_d;
 
   for (size_t i = 0; i < 7; ++i) {
@@ -379,7 +459,7 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   
   if (outcounter % 1000/update_frequency == 0){
     std::cout << "F_ext_robot [N]" << std::endl;
-    std::cout << O_F_ext_hat_K << std::endl;
+    std::cout << O_F_ext_hat_K << std::endl; 
     std::cout << O_F_ext_hat_K_M << std::endl;
     std::cout << "Lambda  Thetha.inv(): " << std::endl;
     std::cout << Lambda*Theta.inverse() << std::endl;
