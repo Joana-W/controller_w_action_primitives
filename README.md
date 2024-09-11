@@ -76,12 +76,13 @@ In the messages_fr3 package, some messages are already defined. The message defi
 
 The cartesian_impedance_controller, the user_input_client and the user_input_server are by Curdin Deplazes.
 
-### Safety Bubble
-The safety_bubble.csv-file introduces for the primitives "Avoid", "Hold" and "Follow" a control strategy to guarantee the desired behaviour in the function external_force().
+### Action primitives
+The safety_bubble.cpp-file introduces for the primitives "Avoid", "Hold" and "Follow" a control strategy to guarantee the desired behaviour in the function external_force().
 #### Avoid
-If the endeffector is closer to the hand than the distance R, the safety bubble gets activated for the action primitive "Avoid", which means that the safety bubble stiffness and the safety bubble damping are calculated. Afterwards the impedance force triggered by the safety bubble stiffness gets calculated and published for the controller. The safety bubble damping matrix is also published for the controller.
+If the endeffector is closer to the hand than the distance R, the safety bubble gets activated for the action primitive "Avoid", which means that the safety bubble stiffness and the safety bubble damping are calculated. Afterwards the impedance force triggered by the safety bubble stiffness gets calculated and published for the cartesian impedance controller. The safety bubble damping matrix is also published for the cartesian impedance controller. If the endeffector is not close to the hand, the published force and damping matrix are equal to zero.
 
 #### Follow
-For the action primitive "Follow" the hand position is published as the new goal position to the controller. The minimum distance is also published to the controller. In the contoller the minimum distance is subtracted from the error.
+For the action primitive "Follow" the hand position is published as the new goal position to the cartesian impedance controller. The minimum distance is also published to the controller. In the cartesian impedance contoller the minimum distance is subtracted from the error.
+
 #### Hold
-For the action primitive "Hold" the stiffness matrix is calculated and then published to the controller. In the controller this newly calculated matrix is replacing the original stiffness matrix of the controller and the damping is also adjusted using the new stiffness matrix.
+For the action primitive "Hold" the stiffness matrix is calculated, in a way that it is a diagonal matrix and then published to the controller. In the cartesian impedance controller this newly calculated matrix is replacing the original stiffness matrix of the controller and the  matrix is also adjusted using the new stiffness matrix.
