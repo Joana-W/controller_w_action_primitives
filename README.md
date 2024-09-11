@@ -77,7 +77,8 @@ In the messages_fr3 package, some messages are already defined. The message defi
 The cartesian_impedance_controller, the user_input_client and the user_input_server are by Curdin Deplazes.
 
 ### Action primitives
-The safety_bubble.cpp-file introduces for the primitives "Avoid", "Hold" and "Follow" a control strategy to guarantee the desired behaviour in the function external_force().
+In the external_force()-function in the safety_bubble.cpp-file a control strategy is introduced to guarantee the desired behaviour for the action primitives "Avoid", "Hold", "Follow".
+
 #### Avoid
 If the endeffector is closer to the hand than the distance R, the safety bubble gets activated for the action primitive "Avoid", which means that the safety bubble stiffness and the safety bubble damping are calculated. Afterwards the impedance force triggered by the safety bubble stiffness gets calculated and published for the cartesian impedance controller. The safety bubble damping matrix is also published for the cartesian impedance controller. If the endeffector is not close to the hand, the published force and damping matrix are equal to zero.
 
