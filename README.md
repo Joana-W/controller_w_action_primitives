@@ -73,3 +73,14 @@ required new messages have to be defined.
 
 ### Custom messages
 In the messages_fr3 package, some messages are already defined. The message definition for the service can be found in meessages_fr3/srv. When creating a new message, first, the definition has to be created in .srv file in CamelCase. Then, type the request, together with the type of the variable, followed by three hyphens and the desired response. The last step, before the message can be included as a lowercase_lowerscase.hpp file is to add it to the CMakeLists.txt file below the already existing messages in the rosidl_generate_interface block.
+
+The cartesian_impedance_controller, the user_input_client and the user_input_server are by Curdin Deplazes.
+
+### Safety Bubble
+The safety bubble introduces for the primitives "Avoid", "Hold" and "Follow" a control strategy to guarantee the desired behaviour in the function external_force().
+#### Avoid
+For the action primitive "Avoid" the impedance force introduced by the spring is published to the controller. The safety bubble damping matrix is also calculated and then published to the controller.
+#### Follow
+For the action primitive "Follow" the hand position is published as the new goal position to the controller. The minimum distance is also published to the controller. In the contoller the minimum distance is subtracted from the error.
+#### Hold
+For the action primitive "Hold" the stiffness matrix is calculated and then published to the controller. In the controller this newly calculated matrix is replacing the original stiffness matrix of the controller and the damping is also adjusted using the new stiffness matrix.
