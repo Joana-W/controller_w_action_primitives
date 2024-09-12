@@ -73,14 +73,11 @@ class SafetyBubble : public rclcpp::Node, public cartesian_impedance_control::Ca
 
     bool velocity_upon_entering_bool;
 
-
-
     Eigen::Matrix<double, 6, 7> jacobian;
 
-    std::array<double, 6> offset_array = {0,0,0,0,0,0};
+    std::array<double, 6> offset_array = {0,0,0,0,0,0}; //initalizing the offset array for the primitive follow
 
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr f_ext_publisher_ = nullptr; //initalized the publisher for the external force
-   // rclcpp::Publisher<messages_fr3::msg::SetPose>::SharedPtr goal_publisher_ = nullptr; //initalized the publisher for the new goal in case of follow and hold
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr hold_stiffness_publisher_ = nullptr;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr P_publisher_ = nullptr;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr D_h_publisher_ = nullptr;
@@ -117,45 +114,33 @@ class SafetyBubble : public rclcpp::Node, public cartesian_impedance_control::Ca
                                                                 0,   0,   0,   0,   0,   0).finished();
     Eigen::Matrix<double, 6, 1> F_ext =  (Eigen::Matrix<double, 6,1>() <<  0,   0,   0,   0,   0,   0).finished(); //Initalize the Matrix with the external force
     Eigen::Matrix<double, 6, 6> Lambda;
-    Eigen::Matrix<double, 6, 6> D;
-    Eigen::Matrix<double, 6, 6> safety_bubble_damping_1;
-    Eigen::Matrix<double, 6, 6> safety_bubble_damping_2;
+    Eigen::Matrix<double, 6, 6> D; 
+    Eigen::Matrix<double, 6, 6> safety_bubble_damping_1; //safety bubble damping version 1
+    Eigen::Matrix<double, 6, 6> safety_bubble_damping_2; //safety bubble damping version 2
     
-    std::array<double, 6> F_ext_array; //array containing the external force, since we can't publish a matrix
+
+    //initalizing the arrays that contain the values of the matrix (used for publishing purposes)
+    std::array<double, 6> F_ext_array; 
     std::array<double, 36> stiffness_hold_array;
     std::array<double, 36> safety_bubble_damping_array;
     std::array<double, 36> P_array;
     std::array<double, 36> D_h_array;
     Eigen::Vector3d goal_pose;
 
-    double theta = 0;
-
-    double distance_hand_goal;
-    double dz;
-    double dy;
-    double dx;
-    double ux;
-    double uy;
-    double uz;
-    double yP;
-    double zP;
-    double xP;
-
+    double phi = 0; //phi coordinate
+    double theta = 0; //theta coordinate
     double r0; //absolute value of the starting position of the endeffector
     double alpha = 0; //ration between starting position and goal position
     double G; //absolute value of the goal position
     Eigen::Matrix<double, 6,6> C1; //integrationconstant from solving the EoM
 
-   // bool inside; //boolean, which is used for testing purposes, true = endeffector is inside of the inner radius
-
     Eigen::Matrix<double, 6, 1> R_vector; //Parametrization of the outer radius of the safety_bubble
 
     Eigen::Matrix<double, 6, 1> external_force_assumption = (Eigen::Matrix<double, 6, 1>() <<  25,   25,   25,   25,   25,   25).finished(); //In the case of hold, we assume a force of 25N in each direction
     Eigen::Matrix<double, 6, 1> max_movement = (Eigen::Matrix<double, 1, 6>() << 0.0, 0.0, 0.0, 0, 0, 0).finished(); //in the case of hold, the ee should move maximal this distance
-    Eigen::Matrix<double, 6, 6> stiffness_hold;
+    Eigen::Matrix<double, 6, 6> stiffness_hold; //initalizes the stiffness matrix for the primitive hold
 
-    double version; //zeigt an, welches damping bei avoid gebraucht wurde
-
+    double version; //which damping is used for the saftey bubble damping
 };
 
 
@@ -172,6 +157,7 @@ class TestInput : public rclcpp::Node{
     
     bool force_time = true;
 
+    //change here to the desired test forces
     double force_hold_x = 25;
     double force_hold_y = 25;
     double force_hold_z = 25;

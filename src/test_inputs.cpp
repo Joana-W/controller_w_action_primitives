@@ -19,7 +19,7 @@ void TestInput::test_input(){
     double hand_position_z;
     switch(chosenPrimitive){
         case 1:{ //static hand position for AVOID
-            std::this_thread::sleep_for(std::chrono::milliseconds(20));
+            std::this_thread::sleep_for(std::chrono::milliseconds(20)); //sleep so, that all other nodes get activated before publishing
             hand_position_x = 0.5;
             hand_position_y = 0.0;
             hand_position_z = 0.4;
@@ -37,21 +37,9 @@ void TestInput::test_input(){
         case 2:{ //dynamic hand position for FOLLOW, moves along the y-axis
             hand_position_z = 0.3;
             hand_position_x = 0.3;
-            //double hand_position_y_array[10] = {0,0.244,0,-0.244,0,0.244,0,-0.244,0,0.244}; //6HZ
-            //double hand_position_y_array[10] = {0,0.308,0,-0.308,0,0.308,0,-0.308,0,0.308}; //8Hz
-           // double hand_position_y_array[10] = {0,0.334,0,-0.334,0,0.334,0,-0.334,0,0.334}; //9Hz
-            //double hand_position_y_array[10] = {0,0.356,0,-0.356,0,0.356,0,-0.356,0,0.356}; //10Hz
-            //double hand_position_y_array[10] = {0,0.0437770427624,0,-0.0438,0,0.0438,0,-0.0438,0,0.0438}; //1Hz
-            //double hand_position_y_array[10] = {0,0.087,0,-0.087,0,0.087,0,-0.087,0,0.087}; //2Hz
-            //double hand_position_y_array[10] = {0,0.129,0,-0.129,0,0.129,0,-0.129,0,0.129}; //3Hz
-            //double hand_position_y_array[10] = {0,0.17,0,-0.17,0,0.17,0,-0.17,0,0.17}; //4Hz
-            //double hand_position_y_array[10] = {0,0.208,0,-0.208,0,0.208,0,-0.208,0,0.208}; //5Hz
-            //double hand_position_y_array[10] = {0,0.277,0,-0.277,0,0.277,0,-0.277,0,0.277}; //7Hz
-            double hand_position_y_array[10] = {0,0.1,0.2,0.3,0.4,0.3,0.2,0.1,0,0}; //move every 5 seconds, für den plot
-           
-
+            double hand_position_y_array[10] = {0,0.1,0.2,0.3,0.4,0.3,0.2,0.1,0,0}; 
             for (int i = 0; i<10; ++i){
-                std::this_thread::sleep_for(std::chrono::seconds(5));
+                std::this_thread::sleep_for(std::chrono::seconds(5)); //move every 5 seconds
                 hand_position_y = hand_position_y_array[i];
                 double hand_position_vector_array[6] = {hand_position_x, hand_position_y, hand_position_z, 0.0, 0.0, 0.0};
                 auto hand_position_vector_msg = std_msgs::msg::Float64MultiArray();
@@ -62,16 +50,13 @@ void TestInput::test_input(){
             }
             break;
         }
-        case 3:{ //static hand position for HOLD
-            std::array<double, 6> force_hold = {force_hold_x, force_hold_y, force_hold_z, 0, 0,0};
+        case 3:{ //static hand position for HOLD and external test force
+            std::array<double, 6> force_hold = {force_hold_x, force_hold_y, force_hold_z, 0, 0,0}; //array containing the external test force
             auto force_hold_msg = std_msgs::msg::Float64MultiArray();
             for(long unsigned int i = 0; i < force_hold.size(); ++i){
                 force_hold_msg.data.push_back(force_hold[i]);
             }
-            for (long unsigned int i = 0; i < 5;++i){
-                RCLCPP_INFO(this->get_logger(), "force hold msg vor publish values: [%f, %f, %f, %f, %f, %f]",
-                force_hold_msg.data[0], force_hold_msg.data[1], force_hold_msg.data[2],
-                force_hold_msg.data[3], force_hold_msg.data[4], force_hold_msg.data[5]); 
+            for (long unsigned int i = 0; i < 5;++i){ //publishing the force for 5 seconds
                 hold_force_publisher_ ->publish(force_hold_msg);
                 std::this_thread::sleep_for(std::chrono::seconds(1));
             }
@@ -79,14 +64,11 @@ void TestInput::test_input(){
             for(long unsigned int i = 0; i < force_hold.size(); ++i){
                 force_hold[i] = 0;
                 force_hold_null_msg.data.push_back(force_hold[i]);
-            }
-            RCLCPP_INFO(this->get_logger(), "force hold msg vor publish values: [%f, %f, %f, %f, %f, %f]",
-                force_hold_null_msg.data[0], force_hold_null_msg.data[1], force_hold_null_msg.data[2],
-                force_hold_null_msg.data[3], force_hold_null_msg.data[4], force_hold_null_msg.data[5]); 
-            hold_force_publisher_ ->publish(force_hold_null_msg);
+            } 
+            hold_force_publisher_ ->publish(force_hold_null_msg); //publishing an external force equal to zero
             break;
         }
-        default:{ //default = static hand position
+        default:{ //default = no hand position
             break;
         }
     } 

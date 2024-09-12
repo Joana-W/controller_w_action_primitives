@@ -83,7 +83,7 @@ Eigen::Matrix<double, 7, 1> CartesianImpedanceController::saturateTorque(
   bool need_to_saturate = false;
   double max_factor = 1;
   double factor;
-  for (size_t i = 0; i < 7; i++) {
+  for (size_t i = 0; i < 7; i++) { //checks for each joint-torque whether it is within the limits, else need_to_saturate = true
     if (abs(tau_d_calculated(i)) > abs(tau_max(i))){
       need_to_saturate = true;
       factor = abs(tau_max(i))/abs(tau_d_calculated(i));
@@ -92,17 +92,13 @@ Eigen::Matrix<double, 7, 1> CartesianImpedanceController::saturateTorque(
       }
     }
   }
- // RCLCPP_INFO(get_node()->get_logger(), "tau_d_Calculated vorher: [%f, %f, %f, %f, %f, %f, %f, %f]",
-   //     tau_d_calculated[0], tau_d_calculated[1], tau_d_calculated[2], tau_d_calculated[3], tau_d_calculated[4], tau_d_calculated[5], tau_d_calculated[6], tau_d_calculated[7]);
-  if (need_to_saturate){
+  if (need_to_saturate){ //torque is being saturated proportionally
     for (size_t i = 0; i < 7; i++){
       tau_d_saturated(i) = tau_d_calculated(i)*max_factor;
     }
     RCLCPP_INFO(get_node()->get_logger(), "tau_d saturated"); 
   }
   else tau_d_saturated = tau_d_calculated;
- // RCLCPP_INFO(get_node()->get_logger(), "tau_d_saturated nachher: [%f, %f, %f, %f, %f, %f, %f, %f]",
-   //     tau_d_saturated[0], tau_d_saturated[1], tau_d_saturated[2], tau_d_saturated[3], tau_d_saturated[4], tau_d_saturated[5], tau_d_saturated[6], tau_d_saturated[7]);
   return tau_d_saturated;
 }
 
@@ -177,9 +173,6 @@ CallbackReturn CartesianImpedanceController::on_configure(const rclcpp_lifecycle
       "external_force_topic", 10, std::bind(&CartesianImpedanceController::f_safety_callback, this, std::placeholders::_1));
     std::cout << "Successfully subscribed to safety_bubble" << std::endl;
 
-   // safety_bubble_new_position_subscriber = get_node()->create_subscription<messages_fr3::msg::SetPose>("set_new_pose",10,
-   //   std::bind(&CartesianImpedanceController::new_pose_callback, this, std::placeholders::_1));
-
     hold_stiffness_subscriber_ = get_node()->create_subscription<std_msgs::msg::Float64MultiArray>(
       "hold_stiffness", 10, std::bind(&CartesianImpedanceController::hold_stiffness_callback, this, std::placeholders::_1));
 
@@ -198,7 +191,6 @@ CallbackReturn CartesianImpedanceController::on_configure(const rclcpp_lifecycle
     lambda_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("inertia_matrix_topic", 10);
     D_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("damping_matrix_topic", 10);
     K_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("stiffness_matrix_topic", 10); 
-    avoid_goal_publisher = get_node()->create_publisher<messages_fr3::msg::SetPose>("original_pose", 10);
     jacobian_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("jacobian_topic", 10); 
     dq_publisher = get_node()->create_publisher<std_msgs::msg::Float64MultiArray>("dq_topic", 10);
   }
@@ -260,23 +252,19 @@ void CartesianImpedanceController::updateJointStates() {
   }
 }
 
-void CartesianImpedanceController::f_safety_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
-  //RCLCPP_INFO(get_node()->get_logger(), "Received message values: [%f, %f, %f, %f, %f, %f]",
-    //msg->data[0], msg->data[1], msg->data[2], msg->data[3], msg->data[4], msg->data[5]);
+void CartesianImpedanceController::f_safety_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){ //callback function for the spring force of the safety bubble
   for (size_t j = 0; j < 6; ++j) {
         F_safety(j) = msg->data[j];
      }
 }
 
-void CartesianImpedanceController::hand_goal_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
+void CartesianImpedanceController::hand_goal_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){ //callback function for the primitive "Follow", where the goal position is equal to the hand-position, and for the primitive "Hold", the goal position was put equal to the initial position
   for (size_t j = 0; j < 3; ++j) {
         position_d_target_(j) = msg->data[j];
      }
-  RCLCPP_INFO(get_node()->get_logger(), "hold goal msg values: [%f, %f, %f]",
-                msg->data[0], msg->data[1], msg->data[2]); 
 }
 
-void CartesianImpedanceController::hold_stiffness_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
+void CartesianImpedanceController::hold_stiffness_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){ //callback funcion for the stiffness matrix which is needed to ensure the desired behaviour for the primitive "Hold"
   for (size_t i = 0; i < 6; ++i) {
         for (size_t j = 0; j < 6; ++j) {
             K_hold(i, j) = msg->data[i * 6 + j];
@@ -284,7 +272,7 @@ void CartesianImpedanceController::hold_stiffness_callback(const std_msgs::msg::
     }
 }
 
-void CartesianImpedanceController::safety_bubble_damping_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
+void CartesianImpedanceController::safety_bubble_damping_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){ //callback function for the safety bubble damping matrix
   for (size_t i = 0; i < 6; ++i) {
         for (size_t j = 0; j < 6; ++j) {
             D_h(i, j) = msg->data[i * 6 + j];
@@ -292,16 +280,13 @@ void CartesianImpedanceController::safety_bubble_damping_callback(const std_msgs
     }
 }
 
-void CartesianImpedanceController::hold_force_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
- RCLCPP_INFO(get_node()->get_logger(), "hold force msg values: [%f, %f, %f, %f, %f, %f]",
-                msg->data[0], msg->data[1], msg->data[2],
-                msg->data[3], msg->data[4], msg->data[5]); 
+void CartesianImpedanceController::hold_force_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){ //callback function for the force used for the tests for the primitive Hold 
   for (size_t j = 0; j < 6; ++j) {
         F_hold(j) = msg->data[j];
      }
 }
 
-void CartesianImpedanceController::offset_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
+void CartesianImpedanceController::offset_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){ //callback function for offset-subscription, which is needed for primitive "Follow"
   for (size_t j = 0; j < 3; ++j) {
         Offset(j) = msg->data[j];
      }
@@ -325,6 +310,7 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   Eigen::Map<Eigen::Matrix<double, 7, 1>> coriolis(coriolis_array.data());
   Eigen::Map<Eigen::Matrix<double, 6, 7>> jacobian(jacobian_array.data());
   
+  //publishes jacobian and dq (needed in safety_bubble.cpp)
   auto jacobian_msg = std_msgs::msg::Float64MultiArray();
   for(long unsigned int i = 0; i < jacobian_array.size(); ++i){
     jacobian_msg.data.push_back(jacobian_array[i]);
@@ -346,7 +332,7 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   updateJointStates(); 
 
   
-  error.head(3) << position - position_d_ /*- Offset*/; 
+  error.head(3) << position - position_d_ - Offset; //for "Follow" Offset is not equal to zero
   if (orientation_d_.coeffs().dot(orientation.coeffs()) < 0.0) {
     orientation.coeffs() << -orientation.coeffs();
   }
@@ -357,7 +343,9 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   for (int i = 0; i < 6; i++){
     I_error(i,0) = std::min(std::max(-max_I(i,0),  I_error(i,0)), max_I(i,0)); 
   }
-/* maximum_error_necessary = false;
+
+//introduces maximum error to avoid large impedance forces
+maximum_error_necessary = false;
       error_factor = 1;
       max_error_factor = 1;
       
@@ -378,9 +366,8 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
           scaled_error(i) = error(i);
         }
        }
-      else*/ scaled_error = error;
+      else scaled_error = error;
 
-  avoid_goal_publisher->publish(position_d_target_msg);
   Lambda = (jacobian * M.inverse() * jacobian.transpose()).inverse();
   // Theta = T*Lambda;
   // F_impedance = -1*(Lambda * Theta.inverse() - IDENTITY) * F_ext;
@@ -416,11 +403,11 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   {
   case 1:
     Theta = Lambda;
-    if (!K_hold.isZero()){
-      F_impedance = -1 * (D_h * (jacobian * dq_) + K_hold * error  /*+ I_error*/) + F_hold; 
+    if (!K_hold.isZero()){ //K_hold is not zero for the primitive Hold
+      F_impedance = -1 * (D_h * (jacobian * dq_) + K_hold * error  /*+ I_error*/) + F_hold; //F_hold is the external force used for the test, D_h in this case not the safety bubble damping but the damping matrix (because the same topic&publisher&subscriber was used as for the safety bubble damping)
     }
     else{
-      F_impedance = -1 * ((D+D_h) * (jacobian * dq_) + K * scaled_error /*+ I_error*/) + F_safety;
+      F_impedance = -1 * ((D+D_h) * (jacobian * dq_) + K * scaled_error /*+ I_error*/) + F_safety; //D_h=safety bubble damping, F_safety = Force from the safety bubble's spring
       }
     break;
 
@@ -432,8 +419,6 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   default:
     break;
   }
- // RCLCPP_INFO(get_node()->get_logger(), "F_impedance: [%f, %f, %f, %f, %f, %f]",
- //   F_impedance[0], F_impedance[1], F_impedance[2], F_impedance[3], F_impedance[4], F_impedance[5]);
   F_ext = 0.9 * F_ext + 0.1 * O_F_ext_hat_K_M; //Filtering 
   I_F_error += dt * Sf* (F_contact_des - F_ext);
   F_cmd = Sf*(0.4 * (F_contact_des - F_ext) + 0.9 * I_F_error + 0.9 * F_contact_des);
@@ -450,7 +435,7 @@ controller_interface::return_type CartesianImpedanceController::update(const rcl
   auto tau_d_placeholder = tau_impedance + tau_nullspace + coriolis; //add nullspace and coriolis components to desired torque
   tau_d << tau_d_placeholder;
   tau_d << saturateTorqueRate(tau_d, tau_J_d_M);  // Saturate torque rate to avoid discontinuities
-  tau_d << saturateTorque(tau_d);
+  tau_d << saturateTorque(tau_d); //Saturate torque to avoid a violation of the physical boundaries
   tau_J_d_M = tau_d;
 
   for (size_t i = 0; i < 7; ++i) {

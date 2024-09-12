@@ -31,9 +31,9 @@ int main(int argc, char **argv) {
                 std::cin >> pose_selection;
                 switch (pose_selection){
                     case 1:{
-                        pose_request->x = 0.4;
+                        pose_request->x = 0.5;
                         pose_request->y = -0.4;
-                        pose_request->z = 0.4;
+                        pose_request->z = 0.5;
                         pose_request->roll = M_PI;
                         pose_request->pitch = 0.0;
                         pose_request->yaw = M_PI_2;
@@ -54,9 +54,9 @@ int main(int argc, char **argv) {
                         break;
                     }
                     case 3:{
-                        pose_request->x = 0.4;
-                        pose_request->y = -0.5;
-                        pose_request->z = 0.4;
+                        pose_request->x = 0.5;
+                        pose_request->y = 0.4;
+                        pose_request->z = 0.5;
                         pose_request->roll = M_PI;
                         pose_request->pitch = 0.0;
                         pose_request->yaw = M_PI_2;

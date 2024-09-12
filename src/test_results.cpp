@@ -8,36 +8,21 @@
 
 TestResult::TestResult() : Node("test_results"){
     hand_position_subscriber_ = this->create_subscription<std_msgs::msg::Float64MultiArray>("hand_position", 10,
-    std::bind(&TestResult::new_pose_callback, this, std::placeholders::_1));
-/*
-    M_subscriber_ = this->create_subscription<std_msgs::msg::Float64MultiArray>("inertia_matrix_topic", 10,
-        std::bind(&TestResult::inertia_callback, this, std::placeholders::_1));
+    std::bind(&TestResult::new_pose_callback, this, std::placeholders::_1)); //hand position for Avoid
 
-    K_subscriber_ = this->create_subscription<std_msgs::msg::Float64MultiArray>("stiffness_matrix_topic", 10,
-        std::bind(&TestResult::K_callback, this, std::placeholders::_1));
-
-    D_subscriber_ = this->create_subscription<std_msgs::msg::Float64MultiArray>("damping_matrix_topic", 10,
-        std::bind(&TestResult::D_callback, this, std::placeholders::_1));
-    
-    D_h_subscriber_ = this->create_subscription<std_msgs::msg::Float64MultiArray>("safety_damping_matrix_topic", 10,
-        std::bind(&TestResult::D_h_callback, this, std::placeholders::_1));
-
-    P_subscriber_ = this->create_subscription<std_msgs::msg::Float64MultiArray>("safety_stiffness_matrix_topic", 10,
-        std::bind(&TestResult::P_callback, this, std::placeholders::_1));
-*/
     franka_state_subscriber = this->create_subscription<franka_msgs::msg::FrankaRobotState>("franka_robot_state_broadcaster/robot_state", 10,
     std::bind(&TestResult::state_callback, this, std::placeholders::_1));
 
     goal_subscriber = this->create_subscription<std_msgs::msg::Float64MultiArray>("hand_goal_topic", 10,
-        std::bind(&TestResult::goal_callback, this, std::placeholders::_1));
+        std::bind(&TestResult::goal_callback, this, std::placeholders::_1)); //Hand position for Follow
     
     jacobian_subscriber = this->create_subscription<std_msgs::msg::Float64MultiArray>("jacobian_topic", 10, 
     std::bind(&TestResult::jacobian_callback, this, std::placeholders::_1));
 
-    timer_ = this->create_wall_timer(
+    timer_ = this->create_wall_timer( //defining duration of the test
         std::chrono::seconds(20), std::bind(&TestResult::timer_callback, this));
 
-    timer_store_positions_ = this->create_wall_timer(
+    timer_store_positions_ = this->create_wall_timer( //storing the position every 70 ms
         std::chrono::milliseconds(70), std::bind(&TestResult::store_positions, this));
 
     RCLCPP_INFO(this->get_logger(), "test_result constructor started.");
@@ -70,7 +55,7 @@ void TestResult::store_positions(){
         path_x.push_back(current_position_.pose.position.x);
         path_y.push_back(current_position_.pose.position.y);
         path_z.push_back(current_position_.pose.position.z);
-        path_ref.push_back(goal_pose[1]);
+        path_ref.push_back(goal_pose[1]); //path of y-hand-position for follow
 }
 
 void TestResult::jacobian_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
@@ -87,33 +72,11 @@ void TestResult::goal_callback(const std_msgs::msg::Float64MultiArray::SharedPtr
    for (size_t j = 0; j < 3; ++j) {
         goal_pose[j] = msg->data[j];
      }
-  RCLCPP_INFO(this->get_logger(), "goal_pose y: [%f]",goal_pose[1]); 
-}
-
-void TestResult::D_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
-    Eigen::Map<Eigen::Matrix<double, 6, 6>> D(msg->data.data());
-}
-
-void TestResult::inertia_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
-    Eigen::Map<Eigen::Matrix<double, 6, 6>> M(msg->data.data());
-}
-
-void TestResult::K_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
-    Eigen::Map<Eigen::Matrix<double, 6, 6>> K(msg->data.data());
-    }
-
-void TestResult::P_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
-    Eigen::Map<Eigen::Matrix<double, 6, 6>> P(msg->data.data());
-}
-
-void TestResult::D_h_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg){
-    Eigen::Map<Eigen::Matrix<double, 6, 6>> D_h(msg->data.data());
 }
 
 bool TestResult::inside_check(geometry_msgs::msg::Point& position, std::array<double, 3>& hand_pose){
-  //  RCLCPP_INFO(this->get_logger(), "inside check started started.");
-    double distance = sqrt(pow(position.x-0.5,2)+pow(position.y-0,2)+pow(position.z-0.4,2));
-    //double distance = sqrt(pow(position.x-hand_pose[0],2)+pow(position.y-hand_pose[1],2)+pow(position.z-hand_pose[2],2));
+    //double distance = sqrt(pow(position.x-0.5,2)+pow(position.y-0,2)+pow(position.z-0.4,2)); //for Avoid: enter the hand position manually
+    double distance = sqrt(pow(position.x-goal_pose[0],2)+pow(position.y-goal_pose[1],2)+pow(position.z-goal_pose[2],2)); //for follow
     if (inside){
         //RCLCPP_ERROR(this->get_logger(), "INSIDE.");
         if (distance < r_eq){
@@ -141,18 +104,24 @@ bool TestResult::outside_check(geometry_msgs::msg::Point& position, std::array<d
     } 
     else {
         double distance = sqrt(pow(position.x-inital_position_.pose.position.x,2)+pow(position.y-inital_position_.pose.position.y,2)+pow(position.z-inital_position_.pose.position.z,2));
-        return distance > r_eq; //Achtung hier auf R ändern für follow
+        if (chosenPrimitive = 3){ //for hold
+            return distance > r_eq;
+        }
+        if (chosenPrimitive = 2){ //for follow
+            return distance > R;
+        }
+        else return 0; //should never occur (function is only called for hold and follow)
     }
 }
 
-bool TestResult::reached_goal_check(geometry_msgs::msg::Point& position, std::array<double, 3>& goal_pose){ //Toleranz von 0.01
+bool TestResult::reached_goal_check(geometry_msgs::msg::Point& position, std::array<double, 3>& goal_pose){ //Tolerance of 0.01, enter the goal position by hand!!!
     if (abs(position.x- 0.4) < 0.01  and abs(position.y-0.4) < 0.01 and abs(position.z-0.4) < 0.01){
         return true;
     }
     else return false;
 }
 
-bool file_exists(const std::string& file_test_results){
+bool file_exists(const std::string& file_test_results){ //checks whether the file already exists
     std::ifstream file(file_test_results); 
     return file.good(); 
     }
@@ -164,10 +133,7 @@ void TestResult::save_to_csv(){
     std::ofstream path_csv_file;
 
     Eigen::Map<const Eigen::Matrix<double, 7, 1>> inital_dq(inital_joint_state_.velocity.data());
-   // std::array<double, 42> jacobian_array =  franka_robot_model_->getZeroJacobian(franka::Frame::kEndEffector); //get Jacobian as an array
-   // Eigen::Map<Eigen::Matrix<double, 6, 7>> jacobian(jacobian_array.data()); //convert the jacobian array into Jacobian matrix
     Eigen::Matrix<double, 6, 1> inital_velocity = jacobian * inital_dq;
-    //RCLCPP_INFO(this->get_logger(), "save to csv started.");
 
     switch(chosenPrimitive){
         case 1:{ //AVOID
@@ -195,7 +161,8 @@ void TestResult::save_to_csv(){
                 RCLCPP_ERROR(this->get_logger(), "Failed to open CSV file");
             }
             test_end = false;
-            path_csv_file.open("path_avoid_neu damping_code verbessert_1.csv");
+            //saves the coordinates of the trajectory to a .csv file
+            path_csv_file.open("path_avoid.csv");
             path_csv_file << "path_x, path_y, path_z" << "\n";
             for (unsigned int i = 0; i<path_x.size(); ++i){
                 path_csv_file << path_x[i] << "," << path_y[i] << "," << path_z[i] << "\n";
@@ -220,7 +187,6 @@ void TestResult::save_to_csv(){
             if (csv_file.is_open()){
                 csv_file << chosenPrimitive << "," << max_phase_x << "," << max_phase_y << "," << max_phase_z << "," << inital_position.x << "," << inital_position.y 
                 << "," << inital_position.z << "," << r_eq << "," << inside << "," << outside << "," << total_distance << "\n"; 
-                //bei Follow hier noch den Parameter für max phase shift einfügen
                 csv_file.close();
                 RCLCPP_ERROR(this->get_logger(), "written to csv file.");
 
@@ -229,7 +195,8 @@ void TestResult::save_to_csv(){
                 RCLCPP_ERROR(this->get_logger(), "Failed to open CSV file");
             }
             test_end = false;
-            path_csv_file.open("path_follow_plot offset.csv");
+            //saves the coordinates of the trajectory to a .csv file
+            path_csv_file.open("path_follow.csv");
             path_csv_file << "path_x, path_y, path_z, path_ref" << "\n";
             for (unsigned int i = 0; i<path_x.size(); ++i){
                 path_csv_file << path_x[i] << "," << path_y[i] << "," << path_z[i] << "," << path_ref[i] << "\n";
@@ -238,9 +205,8 @@ void TestResult::save_to_csv(){
             break; 
         }
         case 3:{ //HOLD
-            
             bool file_already_exists_hold = file_exists("test_results_hold.csv");
-            inside = TestResult::outside_check(position, hand_pose); //eventough bool is called inside, it should still be true for the test to have the desired result
+            inside = TestResult::outside_check(position, hand_pose); //eventough bool is called inside, it should still be true for the test to have the desired result (actually outside:) )
             if (test_end){
             if (file_already_exists_hold) {
                 csv_file.open("test_results_hold.csv", std::ios::app);
@@ -259,7 +225,8 @@ void TestResult::save_to_csv(){
                 RCLCPP_ERROR(this->get_logger(), "Failed to open CSV file");
             }
             test_end = false;
-            path_csv_file.open("path_hold_9_sicher sphere_mit dämpfung angepasst_kraft nur in f_impedance.csv");
+            //saves the coordinates of the trajectory to a .csv file
+            path_csv_file.open("path_hold.csv");
             path_csv_file << "path_x, path_y, path_z" << "\n";
             for (unsigned int i = 0; i<path_x.size(); ++i){
                 path_csv_file << path_x[i] << "," << path_y[i] << "," << path_z[i] << "\n";
@@ -267,10 +234,9 @@ void TestResult::save_to_csv(){
             }
             break;
         }
-        default: {
+        default: { //used to see, how the trajectory of the end-effector is, when not primitive/safety bubble is acting
             //RCLCPP_ERROR(this->get_logger(), "no Primitive chosen.");
             inside = TestResult::inside_check(position, goal_pose); //calls function to check whether the ee is inside of r_eq
-
             std::string filename_check = "test_results_check.csv";
             if (test_end == true){
             bool file_already_exists_check = file_exists(filename_check); //calls function to check whether the csv file already exists

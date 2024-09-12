@@ -93,19 +93,16 @@ public:
     //Nodes
     rclcpp::Subscription<franka_msgs::msg::FrankaRobotState>::SharedPtr franka_state_subscriber = nullptr;
     rclcpp::Service<messages_fr3::srv::SetPose>::SharedPtr pose_srv_;
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr safety_bubble_subscriber;
-    rclcpp::Subscription<messages_fr3::msg::SetPose>::SharedPtr safety_bubble_new_position_subscriber;
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hold_stiffness_subscriber_;
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr safety_bubble_damping_subscriber;
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hold_force_subscriber_;
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr goal_offset_subscriber_;
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr safety_bubble_subscriber; //subscribes to safety bubble spring force
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hold_stiffness_subscriber_; //subscribes to the stiffness matrix for the primitive hold
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr safety_bubble_damping_subscriber; //subscribes to the safety bubble damping matrix/ damping matrix (for primitive hold)
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hold_force_subscriber_; //subscribes to external test force for the primitive hold
+    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr goal_offset_subscriber_; //subscribes to offset for the primitive follow
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr goal_hand_subscriber_; //in the case of follow and hold, is new pose (position of the hand) directly received through this subscriber
-
 
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr lambda_publisher;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr K_publisher;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr D_publisher;
-    rclcpp::Publisher<messages_fr3::msg::SetPose>::SharedPtr avoid_goal_publisher;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr jacobian_publisher;
     rclcpp::Publisher<std_msgs::msg::Float64MultiArray>::SharedPtr dq_publisher;
 
@@ -174,20 +171,6 @@ public:
                                                                 0,   0,   0,   0,   10.1,   0,
                                                                 0,   0,   0,   0,   0,      2.8).finished();  
 
-    /* Eigen::Matrix<double, 6, 6> K =  (Eigen::MatrixXd(6,6) << 500,   0,   0,   0,   0,   0,
-                                                                 0, 500,   0,   0,   0,   0,
-                                                                 0,   0, 500,   0,   0,   0,  // impedance stiffness term
-                                                                 0,   0,   0,  260,   0,   0,
-                                                                 0,   0,   0,   0,  260,   0,
-                                                                 0,   0,   0,   0,   0,  20).finished();
-     Eigen::Matrix<double, 6, 6> D =  (Eigen::MatrixXd(6,6) <<  44.72,   0,   0,   0,   0,   0,
-                                                                 0,  44.72,   0,   0,   0,   0,
-                                                                0,   0,  44.72,   0,   0,   0,  // impedance damping term
-                                                                 0,   0,   0,  32.2,   0,   0,
-                                                                 0,   0,   0,   0,  32.2,   0,
-                                                                 0,   0,   0,   0,   0,   8.9).finished(); */
-
-
     /* Eigen::Matrix<double, 6, 6> K =  (Eigen::MatrixXd(6,6) << 250,   0,   0,   0,   0,   0,
                                                                  0, 250,   0,   0,   0,   0,
                                                                 0,   0, 250,   0,   0,   0,  // impedance stiffness term
@@ -212,7 +195,7 @@ public:
     Eigen::Matrix<double, 6, 6> cartesian_stiffness_target_;                                 // impedance damping term
     Eigen::Matrix<double, 6, 6> cartesian_damping_target_;                                   // impedance damping term
     Eigen::Matrix<double, 6, 6> cartesian_inertia_target_;                                   // impedance damping term
-    Eigen::Vector3d position_d_target_ = {0.4, 0.5, 0.4}; ////////////////////////////////////////////////////////////////////////////////////////////////s
+    Eigen::Vector3d position_d_target_ = {0.5, 0.0, 0.5}; 
     Eigen::Vector3d rotation_d_target_ = {M_PI, 0.0, 0.0};
     Eigen::Quaterniond orientation_d_target_;
     Eigen::Quaterniond orientation_d_; 
@@ -232,12 +215,11 @@ public:
     double max_error = 0.2;
     Eigen::Matrix<double, 6, 1> scaled_error;                                                // scaled pose error (6d)
 
-    Eigen::Matrix<double, 6, 1> F_safety;
-    Eigen::Matrix<double, 6, 1> F_hold;
+    Eigen::Matrix<double, 6, 1> F_safety; //safety bubble spring force
+    Eigen::Matrix<double, 6, 1> F_hold; //external test force for the primitive hold
     Eigen::Matrix<double, 6, 6> K_hold; //contains the adjusted stiffness for the case of hold
-    Eigen::Matrix<double, 6, 6> D_h; //damping matrix for safety_bubble
-
-    Eigen::Vector3d Offset;
+    Eigen::Matrix<double, 6, 6> D_h; //safety bubble damping matrix (for the primitive follow) / damping matrix (for the primitive hold)
+    Eigen::Vector3d Offset; //offset vector for the primitive follow
     
     //Logging
     int outcounter = 0;
