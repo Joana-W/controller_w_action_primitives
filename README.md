@@ -73,3 +73,17 @@ required new messages have to be defined.
 
 ### Custom messages
 In the messages_fr3 package, some messages are already defined. The message definition for the service can be found in meessages_fr3/srv. When creating a new message, first, the definition has to be created in .srv file in CamelCase. Then, type the request, together with the type of the variable, followed by three hyphens and the desired response. The last step, before the message can be included as a lowercase_lowerscase.hpp file is to add it to the CMakeLists.txt file below the already existing messages in the rosidl_generate_interface block.
+
+The cartesian_impedance_controller, the user_input_client and the user_input_server are by Curdin Deplazes.
+
+### Action primitives
+In the external_force()-function in the safety_bubble.cpp-file a control strategy is introduced to guarantee the desired behaviour for the action primitives "Avoid", "Hold", "Follow".
+
+#### Avoid
+If the endeffector is closer to the hand than the distance R, the safety bubble gets activated for the action primitive "Avoid", which means that the safety bubble stiffness and the safety bubble damping are calculated. Afterwards the impedance force triggered by the safety bubble stiffness gets calculated and published for the cartesian impedance controller. The safety bubble damping matrix is also published for the cartesian impedance controller. If the endeffector is not close to the hand, the published force and damping matrix are equal to zero.
+
+#### Follow
+For the action primitive "Follow" the hand position is published as the new goal position to the cartesian impedance controller. The minimum distance is also published to the controller. In the cartesian impedance contoller the minimum distance is subtracted from the error.
+
+#### Hold
+For the action primitive "Hold" the stiffness matrix is calculated, in a way that it is a diagonal matrix and then published to the controller. In the cartesian impedance controller this newly calculated matrix is replacing the original stiffness matrix of the controller and the  matrix is also adjusted using the new stiffness matrix.
