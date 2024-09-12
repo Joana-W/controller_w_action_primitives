@@ -105,7 +105,6 @@ class SafetyBubble : public rclcpp::Node, public cartesian_impedance_control::Ca
                                                                 0,   0,   0, 0,   0,   0,
                                                                 0,   0,   0,   0, 0,   0,
                                                                 0,   0,   0,   0,   0,  0).finished();
-
     Eigen::Matrix<double, 6, 6> safety_bubble_damping =  (Eigen::Matrix<double, 6,6>() <<  0,   0,   0,   0,   0,   0,
                                                                 0,  0,   0,   0,   0,   0,
                                                                 0,   0,  0,   0,   0,   0,  // impedance damping term
@@ -170,62 +169,28 @@ class TestResult : public rclcpp::Node {
     TestResult();
 
     private:
-    void results_callback(const std_msgs::msg::Bool::SharedPtr msg); //callback for inside parameter
-    void test_end_callback(const std_msgs::msg::Bool::SharedPtr msg); //callback for test_end parameter
-    void new_pose_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg); //callback for new goal position
-    void goal_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
-
-    void K_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg); //callback function for the stiffness matrix
-    void inertia_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg); //callback function for the inertia matrix
-    void D_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg); //callback function for the damping matrix
-    void D_h_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
-    void P_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
-    void jacobian_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
-
+   
     void timer_callback();
     rclcpp::TimerBase::SharedPtr timer_;
     rclcpp::TimerBase::SharedPtr timer_store_positions_;
-    
+
     void state_callback(const franka_msgs::msg::FrankaRobotState::SharedPtr msg);
+    void jacobian_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
+    void new_pose_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg); //callback for new goal position
+    void goal_callback(const std_msgs::msg::Float64MultiArray::SharedPtr msg);
 
     void store_positions();
-
-   // void Frequency_Analysis();
     void save_to_csv();
+
 
     bool inside_check(geometry_msgs::msg::Point& position, std::array<double, 3>& hand_pose);
     bool reached_goal_check(geometry_msgs::msg::Point& position, std::array<double, 3>& goal_pose);
     bool outside_check(geometry_msgs::msg::Point& position, std::array<double, 3>& hand_pose);
 
-
-    Eigen::Matrix<std::complex<double>, 6, 6> Transfer_function(double omega, const Eigen::Matrix<double, 6, 6>& M, const Eigen::Matrix<double, 6, 6>& D,
-    const Eigen::Matrix<double, 6, 6>& K); //function which calculates the transferfunction of the systems
-
-    //rclcpp::Subscription<messages_fr3::msg::SetPose>::SharedPtr safety_bubble_new_position_subscriber;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr goal_subscriber;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hand_position_subscriber_; 
-    rclcpp::Subscription<std_msgs::msg::Bool>::SharedPtr test_end_subscriber_;
-
-
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr K_subscriber_; //subscribes to the stiffness matrix/msg/array
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr M_subscriber_; //subscribes to the inertia matrix/msg/array
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr D_subscriber_; //subscribes to the damping matrix/msg/array
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr D_h_subscriber_;
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr P_subscriber_;
     rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr jacobian_subscriber; 
-    rclcpp::Subscription<std_msgs::msg::Float64MultiArray>::SharedPtr hold_force_subscriber_;
-
-
-
     rclcpp::Subscription<franka_msgs::msg::FrankaRobotState>::SharedPtr franka_state_subscriber = nullptr; //subscribes to robot states
-    std::unique_ptr<franka_semantic_components::FrankaRobotModel> franka_robot_model_; //needed to get jacobian
-
-
-    Eigen::Matrix<double, 6, 6> D;
-    Eigen::Matrix<double, 6, 6> M;
-    Eigen::Matrix<double, 6, 6> K;
-    Eigen::Matrix<double, 6, 6> P;
-    Eigen::Matrix<double, 6, 6> D_h;
 
     std::array<double, 3> goal_pose;
     std::array<double, 3> hand_pose;
@@ -237,10 +202,9 @@ class TestResult : public rclcpp::Node {
 
     Eigen::Matrix<double, 6, 7> jacobian;
 
-
-    //SafetyBubble bubble_;
     geometry_msgs::msg::PoseStamped inital_position_;
     geometry_msgs::msg::PoseStamped current_position_;
+    geometry_msgs::msg::PoseStamped last_position_;
     sensor_msgs::msg::JointState current_joint_state_;
     sensor_msgs::msg::JointState inital_joint_state_ ;
 
@@ -257,7 +221,6 @@ class TestResult : public rclcpp::Node {
     double inside_distance;
     double max_inside_distance = 0;
 
-    geometry_msgs::msg::PoseStamped last_position_;
     bool initialized_ = false;
     double total_distance;
 
@@ -268,5 +231,4 @@ class TestResult : public rclcpp::Node {
     double force_hold_x = 25;
     double force_hold_y = 25;
     double force_hold_z = 25;
-
 };
